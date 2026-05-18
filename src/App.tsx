@@ -17,9 +17,9 @@ import Resources from "./pages/Resources";
 import Rewards from "./pages/Rewards";
 import Caseload from "./pages/Caseload";
 import Directory from "./pages/Directory";
+import CareChat from "./pages/CareChat";
 import AIChat from "./pages/AIChat";
 import NotFound from "./pages/NotFound";
-import Admission from "./pages/Admission";
 
 const queryClient = new QueryClient();
 
@@ -37,7 +37,7 @@ const App = () => (
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/checkin" element={<Checkin />} />
-              <Route path="/admission" element={<Admission />} />
+              <Route path="/admission" element={<Navigate to="/checkin" replace />} />
               <Route path="/journal" element={<Journal />} />
               <Route path="/appointments" element={<Appointments />} />
               <Route path="/community" element={<Community />} />
@@ -45,7 +45,7 @@ const App = () => (
               <Route path="/rewards" element={<Rewards />} />
               <Route path="/caseload" element={<Caseload />} />
               <Route path="/directory" element={<Directory />} />
-              <Route path="/care-chat" element={<Navigate to="/directory" replace />} />
+              <Route path="/care-chat" element={<CareChat />} />
               <Route path="/ai-chat" element={<AIChat />} />
             </Route>
             <Route path="*" element={<NotFound />} />

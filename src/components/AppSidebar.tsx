@@ -20,6 +20,7 @@ const userNav = [
   { title: "Journal", url: "/journal", icon: BookOpen },
   { title: "Appointments", url: "/appointments", icon: Calendar },
   { title: "CHW Support", url: "/directory", icon: Users },
+  { title: "Care Chat", url: "/care-chat", icon: ClipboardList },
   { title: "Community", url: "/community", icon: MessageCircle },
   { title: "Resources", url: "/resources", icon: BookHeart },
   { title: "Rewards", url: "/rewards", icon: Gift },
@@ -28,8 +29,10 @@ const userNav = [
 
 const chwNav = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Appointments", url: "/appointments", icon: Calendar },
   { title: "Caseload", url: "/caseload", icon: ClipboardList },
   { title: "Directory", url: "/directory", icon: Users },
+  { title: "Care Chat", url: "/care-chat", icon: MessageCircle },
   { title: "Community", url: "/community", icon: MessageCircle },
   { title: "Resources", url: "/resources", icon: BookHeart },
   { title: "AI Companion", url: "/ai-chat", icon: Sparkles },
@@ -40,12 +43,19 @@ export function AppSidebar() {
   const navItems = isUser ? userNav : chwNav;
 
   return (
-    <aside className="w-72 shrink-0 border-r border-border/50 py-10 px-6 flex flex-col bg-card/50">
-      <div className="font-serif text-2xl tracking-tight text-foreground px-4 mb-10">
-        AfyaMind
+    <aside className="glass-surface relative z-20 m-4 flex w-[calc(100%-2rem)] shrink-0 flex-col rounded-[2rem] border-white/60 px-6 py-8 md:w-72 lg:fixed lg:left-4 lg:top-4 lg:m-0 lg:h-[calc(100vh-2rem)]">
+      <div className="mb-8 px-2">
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-4 py-2 text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">
+          Calm care
+        </div>
       </div>
 
-      <nav className="flex flex-col gap-1 flex-1">
+      <div className="mb-10 px-4">
+        <div className="font-serif text-3xl tracking-tight text-foreground">AfyaMind</div>
+        <p className="mt-2 text-sm text-muted-foreground">Soft support, grounded check-ins, and guided next steps.</p>
+      </div>
+
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
         {navItems.map((item) => (
           <NavLink
             key={item.url}
@@ -60,9 +70,9 @@ export function AppSidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-border/50 pt-6 px-4">
+      <div className="mt-6 border-t border-white/60 px-4 pt-6">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-sm font-medium text-foreground">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/75 text-sm font-medium text-foreground shadow-[0_10px_24px_rgba(61,121,89,0.12)]">
             {user?.name?.charAt(0)?.toUpperCase() || "?"}
           </div>
           <div className="min-w-0">

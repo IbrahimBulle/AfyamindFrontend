@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { api, type CHWDirectoryEntry, type CHWLinkStatus } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,7 @@ export default function Directory() {
       });
       toast({
         title: "CHW linked",
-        description: `${selectedCHW.name} is now your support contact, and a follow-up appointment plus SMS notifications were created for both of you.`,
+        description: `${selectedCHW.name} is now your support contact. You can now book follow-up appointments and send SMS reminders to both sides.`,
       });
       setSelectedCHW(null);
       await loadDirectory();
@@ -130,7 +131,7 @@ export default function Directory() {
     <div className="animate-fade-in flex flex-col gap-8">
       <header>
         <h1 className="text-4xl tracking-tight">CHW Support</h1>
-        <p className="text-muted-foreground mt-2">Choose a registered Community Health Worker to enable SMS, realtime talk, and video call.</p>
+        <p className="text-muted-foreground mt-2">Choose a registered Community Health Worker to unlock care chat, follow-up booking, and certificate approval.</p>
       </header>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.1fr,0.9fr] gap-6">
@@ -164,6 +165,14 @@ export default function Directory() {
                   Linked on {formatDate(linkedCHW.created_at)}
                 </p>
               )}
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Button asChild variant="outline" className="rounded-full">
+                  <Link to="/care-chat">Open Care Chat</Link>
+                </Button>
+                <Button asChild className="rounded-full">
+                  <Link to="/appointments">Book Session</Link>
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="rounded-3xl border border-dashed border-border/70 px-5 py-6 text-sm text-muted-foreground">
@@ -209,7 +218,7 @@ export default function Directory() {
       <div className="flex flex-col gap-4">
         <div>
           <h2 className="text-xl">Available CHWs</h2>
-          <p className="text-sm text-muted-foreground mt-1">Choose one registered CHW to enable SMS, realtime talk, and video call.</p>
+          <p className="text-sm text-muted-foreground mt-1">Choose one registered CHW to enable messaging, support sessions, and guided follow-up.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

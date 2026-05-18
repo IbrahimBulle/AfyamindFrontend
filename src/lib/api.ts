@@ -1,5 +1,27 @@
-export const DEFAULT_API_BASE = import.meta.env.DEV ? "http://localhost:8080" : "https://afyamentbackend.onrender.com";
-const API_BASE = import.meta.env.VITE_API_BASE || DEFAULT_API_BASE;
+const LOCAL_API_BASE = "http://localhost:8080";
+const REMOTE_API_BASE = import.meta.env.VITE_API_BASE || "https://afyamentbackend.onrender.com";
+
+function isLocalHostname(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function resolveApiBase() {
+  if (typeof window !== "undefined") {
+    const storedOverride = window.localStorage.getItem("afyamind_api_base");
+    if (storedOverride?.trim()) {
+      return storedOverride.trim();
+    }
+
+    if (isLocalHostname(window.location.hostname)) {
+      return LOCAL_API_BASE;
+    }
+  }
+
+  return import.meta.env.DEV ? LOCAL_API_BASE : REMOTE_API_BASE;
+}
+
+export const DEFAULT_API_BASE = resolveApiBase();
+export const API_BASE = DEFAULT_API_BASE;
 
 interface AuthUser {
   id: number;
@@ -39,6 +61,17 @@ interface CheckinResponse {
   phq9_risk_level: string;
 }
 
+interface CheckinRecord {
+  id: number;
+  mood: number;
+  stress: number;
+  anxiety: number;
+  sleep_hours: number;
+  note: string;
+  risk_level: string;
+  created_at: string;
+}
+
 interface JournalEntry {
   id: number;
   entry: string;
@@ -60,6 +93,10 @@ interface Appointment {
   appointment_time: string;
   status: string;
   created_at: string;
+  chw_user_id?: number | null;
+  patient_id?: number;
+  patient_name?: string;
+  patient_phone?: string;
 }
 
 interface AppointmentCreationResponse {
@@ -94,6 +131,16 @@ interface MotivationResponse {
 interface VoiceHelplineResponse {
   language: string;
   script: string;
+}
+
+interface HealthResponse {
+  status: string;
+  ai_provider: string;
+  ai_model: string;
+  ai_endpoint: string;
+  ai_is_local: boolean;
+  sms_provider: string;
+  sms_ready: boolean;
 }
 
 interface CommunityMessage {
@@ -192,21 +239,54 @@ interface ExerciseRecommendation {
   focus: string;
 }
 
+interface SessionProgressStatus {
+  exercise_complete: boolean;
+  chw_chat_complete: boolean;
+  guidance_complete: boolean;
+  reflection: string;
+  certificate_requested: boolean;
+  certificate_approved: boolean;
+  certificate_requested_at?: string | null;
+  chw_approved_at?: string | null;
+  approved_by_chw_id?: number | null;
+  updated_at?: string | null;
+  requires_chw_approval: boolean;
+  current_risk_level: string;
+  checklist_complete: boolean;
+  can_generate_certificate: boolean;
+}
+
+interface CHWCertificateRequest {
+  patient_id: number;
+  patient_name: string;
+  patient_phone: string;
+  exercise_complete: boolean;
+  chw_chat_complete: boolean;
+  guidance_complete: boolean;
+  reflection: string;
+  certificate_requested_at?: string | null;
+  chw_approved_at?: string | null;
+  updated_at?: string | null;
+  current_risk_level: string;
+  checklist_complete: boolean;
+  certificate_approved: boolean;
+}
+
 interface AdmissionResponse {
   admission_id: number;
   risk_level: string;
   created_at: string;
-  phq9_score: number;
-  phq9_severity: string;
-  phq9_risk_level: string;
+  phq9_score: number | null;
+  phq9_severity?: string;
+  phq9_risk_level?: string;
   reward_points: number;
   recommendation_type: string;
   recommendation_message: string;
   suggested_actions: string[];
-  screenings: ScreeningResult[];
-  primary_focuses: string[];
-  recommended_exercises: ExerciseRecommendation[];
-  progress_label: string;
+  screenings?: ScreeningResult[];
+  primary_focuses?: string[];
+  recommended_exercises?: ExerciseRecommendation[];
+  progress_label?: string;
   admission_flow_complete: boolean;
 }
 
@@ -217,6 +297,11 @@ interface AIAssistantResponse {
   risk_level: string;
   sms_status?: string;
   sms_warning?: string;
+}
+
+interface AIMessage {
+  role: "user" | "assistant";
+  content: string;
 }
 
 interface CertificateResponse {
@@ -280,13 +365,17 @@ class ApiClient {
     return this.request<DashboardSummary>("GET", "/api/dashboard/summary");
   }
 
+  getHealth() {
+    return this.request<HealthResponse>("GET", "/api/health");
+  }
+
   // Checkins
   createCheckin(data: { mood: number; stress: number; anxiety: number; sleep_hours: number; note: string; phq9_answers?: number[] }) {
     return this.request<CheckinResponse>("POST", "/api/checkins", data);
   }
 
   getCheckins() {
-    return this.request<CheckinResponse[]>("GET", "/api/checkins");
+    return this.request<CheckinRecord[]>("GET", "/api/checkins");
   }
 
   // Journal
@@ -308,7 +397,7 @@ class ApiClient {
   }
 
   // Appointments
-  createAppointment(data: { therapist: string; session_mode: string; appointment_time: string; notification_phone?: string }) {
+  createAppointment(data: { therapist: string; session_mode: string; appointment_time: string; notification_phone?: string; contact_phone?: string; chw_user_id?: number }) {
     return this.request<AppointmentCreationResponse>("POST", "/api/appointments", data);
   }
 
@@ -331,6 +420,10 @@ class ApiClient {
     return this.request<CareMessage[]>("GET", `/api/care/messages${q}`);
   }
 
+  createCareMessage(data: { room_id: string; message: string }) {
+    return this.request<CareMessage>("POST", "/api/care/messages", data);
+  }
+
   // Rewards
   getRewards() {
     return this.request<RewardsBalance>("GET", "/api/rewards");
@@ -347,7 +440,7 @@ class ApiClient {
   }
 
   // AI Assistant
-  askAI(data: { prompt: string; language: string; send_sms?: boolean; sms_to?: string }) {
+  askAI(data: { prompt: string; context?: string; language: string; messages?: AIMessage[]; send_sms?: boolean; sms_to?: string }) {
     return this.request<AIAssistantResponse>("POST", "/api/ai/assistant", data);
   }
 
@@ -380,17 +473,37 @@ class ApiClient {
     return this.request<VoiceHelplineResponse>("POST", "/api/voice/helpline", data ?? {});
   }
 
+  getSessionProgress() {
+    return this.request<SessionProgressStatus>("GET", "/api/session-progress");
+  }
+
+  updateSessionProgress(data: Partial<Pick<SessionProgressStatus, "exercise_complete" | "chw_chat_complete" | "guidance_complete" | "reflection">>) {
+    return this.request<SessionProgressStatus>("PUT", "/api/session-progress", data);
+  }
+
+  requestCertificateApproval() {
+    return this.request<SessionProgressStatus>("POST", "/api/certification/request", {});
+  }
+
+  getCHWCertificateRequests() {
+    return this.request<CHWCertificateRequest[]>("GET", "/api/chw/certificate-requests");
+  }
+
+  approveCHWCertificateRequest(patientId: number) {
+    return this.request<{ message: string; patient_id: number; approved_at: string }>("POST", `/api/chw/certificate-requests/${patientId}/approve`, {});
+  }
+
   // Admission
   startAdmission(data: {
-    phq9_answers: number[];
-    gad7_answers: number[];
-    pcl5_answers: number[];
-    kessler_answers: number[];
-    mdq_answers: boolean[];
-    mdq_concurrent: boolean;
-    mdq_impairment: number;
-    audit_answers: number[];
-    cssrs_answers: boolean[];
+    phq9_answers?: number[];
+    gad7_answers?: number[];
+    pcl5_answers?: number[];
+    kessler_answers?: number[];
+    mdq_answers?: boolean[];
+    mdq_concurrent?: boolean;
+    mdq_impairment?: number;
+    audit_answers?: number[];
+    cssrs_answers?: boolean[];
     mood?: number;
     stress?: number;
     anxiety?: number;
@@ -419,10 +532,13 @@ export type {
   CHWDirectoryEntry,
   CHWLinkStatus,
   CheckinResponse,
+  CheckinRecord,
   CommunityMessage,
   CareMessage,
   CertificateResponse,
+  CHWCertificateRequest,
   DashboardSummary,
+  HealthResponse,
   JournalEntry,
   MotivationResponse,
   ExerciseRecommendation,
@@ -432,6 +548,7 @@ export type {
   RewardRedemption,
   RewardsBalance,
   ScreeningResult,
+  SessionProgressStatus,
   SmsProviderResponse,
   VoiceHelplineResponse,
 };

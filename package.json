@@ -5,12 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:frontend": "vite",
+    "dev:backend": "cd backend && go run ./cmd/server",
     "build": "vite build",
+    "build:backend": "cd backend && go build ./cmd/server",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:backend": "cd backend && go test ./..."
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -56,6 +56,13 @@ type VertexResponse = {
 
 type SmsResponse = {
   status?: string;
+  SMSMessageData?: {
+    Message?: string;
+    Recipients?: Array<{
+      status?: string;
+      messageId?: string;
+    }>;
+  };
 };
 
 serve(async (req: Request) => {
@@ -225,20 +232,23 @@ function extractReply(rawText: string): string {
 }
 
 async function sendSMS(to: string, message: string): Promise<{ status: string }> {
-  const smsURL = getEnv("DEVTEXT_SMS_URL", "https://devtext.site/v1/sms/send");
-  const smsAPIKey = getRequiredEnv("DEVTEXT_API_KEY");
+  const smsURL = getEnv("AFRICASTALKING_SMS_URL", getEnv("DEVTEXT_SMS_URL", "https://api.africastalking.com/version1/messaging"));
+  const smsAPIKey = getRequiredEnvFrom(["AFRICASTALKING_API_KEY", "DEVTEXT_API_KEY"]);
+  const smsUsername = getEnv("AFRICASTALKING_USERNAME", "sandbox");
+  const body = new URLSearchParams({
+    username: smsUsername,
+    to,
+    message,
+  });
 
   const response = await fetch(smsURL, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": smsAPIKey,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Accept": "application/json",
+      "apiKey": smsAPIKey,
     },
-    body: JSON.stringify({
-      to,
-      message,
-      correlation_id: `wellness-chat-${Date.now()}`,
-    }),
+    body: body.toString(),
   });
 
   const rawText = await response.text();
@@ -247,7 +257,9 @@ async function sendSMS(to: string, message: string): Promise<{ status: string }>
   }
 
   const payload = JSON.parse(rawText) as SmsResponse;
-  return { status: payload.status || "queued" };
+  return {
+    status: payload.SMSMessageData?.Recipients?.[0]?.status || payload.SMSMessageData?.Message || payload.status || "queued",
+  };
 }
 
 function truncateForSMS(message: string): string {
@@ -279,6 +291,16 @@ function getRequiredEnv(key: string): string {
     throw new Error(`${key} is not configured`);
   }
   return value.trim();
+}
+
+function getRequiredEnvFrom(keys: string[]): string {
+  for (const key of keys) {
+    const value = Deno.env.get(key);
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new Error(`${keys.join(" or ")} is not configured`);
 }
 
 function jsonResponse(payload: unknown, status = 200): Response {

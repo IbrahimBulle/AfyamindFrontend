@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import { Bot, Loader2, Send, Sparkles, User } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { api } from "@/lib/api";
+import { api, type HealthResponse } from "@/lib/api";
 import { focusLabel, getCarePlan, recommendationHeadline } from "@/lib/wellness";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,13 +61,33 @@ export default function AIChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [suggestedActions, setSuggestedActions] = useState<string[]>(carePlan?.suggestedActions || []);
-  const [modelName, setModelName] = useState("AfyaMind");
+  const [modelName, setModelName] = useState("Wellness assistant");
+  const [health, setHealth] = useState<HealthResponse | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    api.getHealth()
+      .then((response) => {
+        if (!isActive) return;
+        setHealth(response);
+        setModelName(buildConfiguredModelLabel(response));
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setHealth(null);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const handleSend = async () => {
     const prompt = input.trim();
@@ -79,19 +99,19 @@ export default function AIChat() {
     setLoading(true);
 
     try {
-      const contextualPrompt = [
+      const context = [
         carePlan
           ? `Current support status: ${carePlan.riskLevel} risk, PHQ-9 score ${carePlan.phq9Score}, focuses ${carePlan.primaryFocuses.join(", ")}, ${carePlan.recommendationMessage}`
           : "",
-        "Keep the conversation warm, practical, and flowing naturally.",
-        prompt,
       ]
         .filter(Boolean)
         .join("\n");
 
       const result = await api.askAI({
-        prompt: contextualPrompt,
+        prompt,
+        context,
         language: user?.language || "en",
+        messages: [...messages, userMsg].map(({ role, content }) => ({ role, content })),
       });
 
       setModelName(result.model);
@@ -104,8 +124,12 @@ export default function AIChat() {
           content: result.reply,
         },
       ]);
-    } catch (err: any) {
-      toast({ title: "AI Error", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({
+        title: "AI Error",
+        description: err instanceof Error ? err.message : "Unable to load a reply right now.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
       inputRef.current?.focus();
@@ -116,24 +140,31 @@ export default function AIChat() {
 
   return (
     <div className="animate-fade-in flex flex-col gap-4 h-[calc(100vh-7rem)]">
-      <header className="rounded-[30px] border border-border/70 bg-gradient-to-br from-primary/10 via-background to-sun/20 p-6">
+      <header className="glass-surface rounded-[30px] bg-[linear-gradient(135deg,rgba(255,255,255,0.82),rgba(216,244,225,0.56))] p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/70 bg-white/70 shadow-[0_10px_24px_rgba(61,121,89,0.12)]">
               <Sparkles className="h-5 w-5 text-primary" />
             </div>
             <div>
               <h1 className="text-2xl tracking-tight">Wellness Companion</h1>
               <p className="text-sm text-muted-foreground">
-                Better language support, smoother coaching flow, and context-aware guidance.
+                {buildAIStatusLine(health)}
               </p>
             </div>
           </div>
 
+          <div className="glass-surface rounded-2xl px-4 py-3 text-sm">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">AI runtime</div>
+            <div className="mt-2 font-medium">{buildConfiguredModelLabel(health)}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {buildAIStatusBadge(health)}
+            </div>
+          </div>
         </div>
 
         {carePlan && (
-          <div className="mt-5 rounded-2xl bg-background/75 px-4 py-3 text-sm text-muted-foreground">
+          <div className="mt-5 rounded-2xl border border-white/60 bg-white/60 px-4 py-3 text-sm text-muted-foreground backdrop-blur-xl">
             Current support path: {recommendationHeadline(carePlan)}
             {carePlan.primaryFocuses.length > 0 && (
               <div className="mt-2">Current focuses: {carePlan.primaryFocuses.map(focusLabel).join(", ")}</div>
@@ -154,8 +185,8 @@ export default function AIChat() {
               <div
                 className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                   msg.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-br-md"
-                    : "bg-card border border-border rounded-bl-md"
+                    ? "rounded-br-md border border-white/40 bg-primary text-primary-foreground shadow-[0_14px_28px_rgba(61,121,89,0.16)]"
+                    : "glass-surface rounded-bl-md bg-[linear-gradient(140deg,rgba(255,255,255,0.8),rgba(223,245,230,0.52))]"
                 }`}
               >
                 {msg.role === "assistant" ? (
@@ -180,7 +211,7 @@ export default function AIChat() {
             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
               <Bot className="h-4 w-4 text-primary" />
             </div>
-            <div className="bg-card border border-border px-4 py-3 rounded-2xl rounded-bl-md">
+            <div className="glass-surface rounded-2xl rounded-bl-md px-4 py-3">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             </div>
           </div>
@@ -188,7 +219,7 @@ export default function AIChat() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr,0.85fr]">
-        <div className="rounded-[28px] border border-border/70 bg-card p-4">
+        <div className="glass-surface rounded-[28px] p-4">
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Quick prompts</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {quickPrompts.map((qp) => (
@@ -198,7 +229,7 @@ export default function AIChat() {
                   setInput(qp);
                   inputRef.current?.focus();
                 }}
-                className="text-xs px-3 py-2 rounded-2xl border border-border bg-background text-muted-foreground hover:border-primary/30 hover:text-foreground transition-all"
+                className="rounded-2xl border border-white/60 bg-white/70 px-3 py-2 text-xs text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all hover:border-primary/35 hover:bg-white/80 hover:text-foreground"
               >
                 {qp}
               </button>
@@ -206,12 +237,12 @@ export default function AIChat() {
           </div>
         </div>
 
-        <div className="rounded-[28px] border border-border/70 bg-card p-4">
+        <div className="glass-surface rounded-[28px] p-4">
           <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Suggested actions</p>
           <p className="mt-2 text-xs text-muted-foreground">Current model: {modelName}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {suggestedActions.map((action) => (
-              <span key={action} className="rounded-full bg-secondary px-3 py-2 text-xs text-foreground">
+              <span key={action} className="rounded-full border border-white/60 bg-white/70 px-3 py-2 text-xs text-foreground shadow-[0_8px_18px_rgba(61,121,89,0.1)]">
                 {action}
               </span>
             ))}
@@ -219,7 +250,7 @@ export default function AIChat() {
         </div>
       </div>
 
-      <div className="flex gap-3 pt-2 border-t border-border/50">
+      <div className="glass-surface flex gap-3 rounded-[28px] border-white/55 px-4 py-4">
         <Input
           ref={inputRef}
           value={input}
@@ -235,6 +266,53 @@ export default function AIChat() {
       </div>
     </div>
   );
+}
+
+function buildConfiguredModelLabel(health: HealthResponse | null) {
+  if (!health) return "Wellness assistant";
+  if (health.ai_provider === "ollama") {
+    return `Ollama (${health.ai_model})`;
+  }
+  return `${humanizeProvider(health.ai_provider)} (${health.ai_model})`;
+}
+
+function buildAIStatusLine(health: HealthResponse | null) {
+  if (!health) {
+    return "Context-aware guidance connected to your care plan.";
+  }
+  if (health.ai_provider === "ollama" && health.ai_is_local) {
+    return `Configured to use local Ollama on this machine with ${health.ai_model}.`;
+  }
+  if (health.ai_provider === "ollama") {
+    return `Configured to use Ollama with ${health.ai_model} for context-aware guidance.`;
+  }
+  return `Configured to use ${humanizeProvider(health.ai_provider)} for context-aware guidance from your care plan.`;
+}
+
+function buildAIStatusBadge(health: HealthResponse | null) {
+  if (!health) {
+    return "Backend health not available yet.";
+  }
+  if (health.ai_provider === "ollama" && health.ai_is_local) {
+    return "Local AI is pointed at the Ollama service on this machine.";
+  }
+  if (health.ai_provider === "ollama") {
+    return "Ollama is configured as the primary provider.";
+  }
+  return `Primary provider: ${humanizeProvider(health.ai_provider)}.`;
+}
+
+function humanizeProvider(provider: string) {
+  switch (provider) {
+    case "openai":
+      return "OpenAI";
+    case "ollama":
+      return "Ollama";
+    case "fallback":
+      return "Fallback";
+    default:
+      return provider;
+  }
 }
 
 function buildWelcomeMessage(name?: string, language = "en", headline = "") {

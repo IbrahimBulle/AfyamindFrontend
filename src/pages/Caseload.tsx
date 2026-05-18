@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type CHWCaseload, type CHWCaseloadPatient } from "@/lib/api";
+import { Link } from "react-router-dom";
+import { api, type CHWCaseload, type CHWCaseloadPatient, type CHWCertificateRequest } from "@/lib/api";
 import { AlertTriangle, MessageSquareHeart, Phone, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -7,7 +8,9 @@ import { useToast } from "@/hooks/use-toast";
 export default function Caseload() {
   const { toast } = useToast();
   const [caseload, setCaseload] = useState<CHWCaseload | null>(null);
+  const [certificateRequests, setCertificateRequests] = useState<CHWCertificateRequest[]>([]);
   const [loadingPatientId, setLoadingPatientId] = useState<number | null>(null);
+  const [approvingPatientId, setApprovingPatientId] = useState<number | null>(null);
 
   useEffect(() => {
     void loadCaseload();
@@ -15,7 +18,12 @@ export default function Caseload() {
 
   const loadCaseload = async () => {
     try {
-      setCaseload(await api.getCHWCaseload());
+      const [caseloadData, requests] = await Promise.all([
+        api.getCHWCaseload(),
+        api.getCHWCertificateRequests(),
+      ]);
+      setCaseload(caseloadData);
+      setCertificateRequests(requests);
     } catch (error: any) {
       toast({
         title: "Unable to load caseload",
@@ -56,14 +64,23 @@ export default function Caseload() {
     }
   };
 
-  const riskColor = (level: string) => {
-    switch (level) {
-      case "high":
-        return "bg-destructive/10 text-destructive";
-      case "medium":
-        return "bg-sun/50 text-foreground";
-      default:
-        return "bg-sage/20 text-foreground";
+  const handleApproveCertificate = async (patientId: number) => {
+    setApprovingPatientId(patientId);
+    try {
+      await api.approveCHWCertificateRequest(patientId);
+      toast({
+        title: "Certificate approved",
+        description: "The patient can now download their certificate.",
+      });
+      await loadCaseload();
+    } catch (error: any) {
+      toast({
+        title: "Unable to approve certificate",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setApprovingPatientId(null);
     }
   };
 
@@ -75,6 +92,64 @@ export default function Caseload() {
           {caseload ? `${caseload.total_patients} patients assigned to you` : "Loading..."}
         </p>
       </header>
+
+      <div className="card-elevated p-6 flex flex-col gap-4">
+        <div>
+          <h2 className="text-2xl tracking-tight">Certificate Notifications</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Review patients who finished their exercises and asked for certificate approval.
+          </p>
+        </div>
+
+        {certificateRequests.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-border/70 px-4 py-4 text-sm text-muted-foreground">
+            No pending certificate review requests right now.
+          </div>
+        )}
+
+        {certificateRequests.map((request) => (
+          <div key={request.patient_id} className="rounded-3xl border border-border/70 bg-background/70 p-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-2">
+              <div className="font-medium">{request.patient_name}</div>
+              <div className="text-sm text-muted-foreground">
+                Risk: <span className="capitalize">{request.current_risk_level}</span>
+                <span className="mx-2">·</span>
+                Requested {request.certificate_requested_at ? formatDateTime(request.certificate_requested_at) : "recently"}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Exercise: {request.exercise_complete ? "done" : "pending"}
+                <span className="mx-2">·</span>
+                CHW support: {request.chw_chat_complete ? "done" : "pending"}
+                <span className="mx-2">·</span>
+                Guidance: {request.guidance_complete ? "done" : "pending"}
+              </div>
+              {request.reflection && (
+                <div className="text-sm text-muted-foreground">
+                  Reflection: {request.reflection}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Button asChild variant="outline" className="rounded-full">
+                <Link to={`/care-chat?target=${request.patient_id}`}>Open Chat</Link>
+              </Button>
+              <Button
+                type="button"
+                className="rounded-full"
+                disabled={approvingPatientId === request.patient_id || request.certificate_approved}
+                onClick={() => void handleApproveCertificate(request.patient_id)}
+              >
+                {request.certificate_approved
+                  ? "Approved"
+                  : approvingPatientId === request.patient_id
+                    ? "Approving..."
+                    : "Approve Certificate"}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
 
       <div className="flex flex-col gap-3">
         {caseload?.patients?.map((patient) => {
@@ -107,6 +182,9 @@ export default function Caseload() {
               </div>
 
               <div className="flex flex-wrap gap-3">
+                <Button asChild type="button" variant="outline" className="rounded-full">
+                  <Link to={`/care-chat?target=${patient.patient_id}`}>Open Care Chat</Link>
+                </Button>
                 <Button
                   type="button"
                   className="rounded-full"
@@ -130,4 +208,28 @@ export default function Caseload() {
       </div>
     </div>
   );
+}
+
+function riskColor(level: string) {
+  switch (level) {
+    case "high":
+      return "bg-destructive/10 text-destructive";
+    case "medium":
+      return "bg-sun/50 text-foreground";
+    default:
+      return "bg-sage/20 text-foreground";
+  }
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }

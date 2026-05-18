@@ -5,15 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { BellRing, Calendar, MapPin, Phone, User } from "lucide-react";
 
 export default function Appointments() {
+  const { user, isUser, isCHW } = useAuth();
   const { toast } = useToast();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [directory, setDirectory] = useState<CHWDirectoryEntry[]>([]);
   const [selectedCHW, setSelectedCHW] = useState<CHWDirectoryEntry | null>(null);
-  const [notificationPhone, setNotificationPhone] = useState("");
+  const [notificationPhone, setNotificationPhone] = useState(user?.phone || "");
   const [sessionMode, setSessionMode] = useState("in_person");
   const [appointmentTime, setAppointmentTime] = useState("");
   const [reminderTitle, setReminderTitle] = useState("");
@@ -39,10 +41,24 @@ export default function Appointments() {
 
   useEffect(() => {
     void loadAppointmentsPage();
-  }, []);
+  }, [isCHW]);
+
+  useEffect(() => {
+    if (user?.phone && !notificationPhone) {
+      setNotificationPhone(user.phone);
+    }
+  }, [notificationPhone, user?.phone]);
 
   const loadAppointmentsPage = async () => {
     try {
+      if (isCHW) {
+        const appointmentsData = await api.getAppointments();
+        setAppointments(appointmentsData);
+        setReminders([]);
+        setDirectory([]);
+        return;
+      }
+
       const [appointmentsData, remindersData, directoryData] = await Promise.all([
         api.getAppointments(),
         api.getReminders(),
@@ -62,15 +78,19 @@ export default function Appointments() {
     if (!selectedCHW?.name || !appointmentTime) return;
     setLoading(true);
     try {
-      const response = await api.createAppointment({
+      const payload = {
         therapist: selectedCHW.name,
         session_mode: sessionMode,
         appointment_time: appointmentTime,
         notification_phone: notificationPhone.trim() || undefined,
-      });
+        contact_phone: selectedCHW.phone?.trim() || undefined,
+        ...(typeof selectedCHW.id === "number" ? { chw_user_id: selectedCHW.id } : {}),
+      };
 
-      const userSMSDelivered = response.sms_status && response.sms_status !== "skipped";
-      const contactSMSDelivered = response.contact_sms_status && response.contact_sms_status !== "skipped";
+      const response = await api.createAppointment(payload);
+
+      const userSMSDelivered = didSendSMS(response.sms_status);
+      const contactSMSDelivered = didSendSMS(response.contact_sms_status);
 
       let bookingSMSMessage = `You earned ${response.reward_points} reward points and a reminder was added automatically.`;
       if (userSMSDelivered && contactSMSDelivered) {
@@ -90,7 +110,7 @@ export default function Appointments() {
         description: bookingSMSMessage,
       });
       setAppointmentTime("");
-      setNotificationPhone(selectedCHW.phone || "");
+      setNotificationPhone(user?.phone || notificationPhone);
       await loadAppointmentsPage();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -124,6 +144,63 @@ export default function Appointments() {
     }
   };
 
+  if (isCHW) {
+    return (
+      <div className="animate-fade-in flex flex-col gap-8">
+        <header>
+          <h1 className="text-4xl tracking-tight">Booked Sessions</h1>
+          <p className="text-muted-foreground mt-2">Patients who selected you for a session appear here with their booking time and contact.</p>
+        </header>
+
+        <div className="flex flex-col gap-4">
+          {appointments.map((appointment) => (
+            <div key={appointment.id} className="card-elevated p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <div className="font-medium text-lg">{appointment.patient_name || "Patient"}</div>
+                <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-2">
+                  <Calendar className="h-3.5 w-3.5" />
+                  {formatDateTime(appointment.appointment_time)}
+                  <span className="capitalize">· {appointment.session_mode.replace("_", " ")}</span>
+                </div>
+                <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-2">
+                  <Phone className="h-3.5 w-3.5" />
+                  {appointment.patient_phone || "No phone number on file"}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {appointment.patient_id && (
+                  <Button asChild variant="outline" className="rounded-full">
+                    <Link to={`/care-chat?target=${appointment.patient_id}`}>
+                      Open Chat
+                    </Link>
+                  </Button>
+                )}
+                <span
+                  className={`text-xs px-3 py-1 rounded-full font-medium ${
+                    appointment.status === "booked" ? "bg-primary/10 text-primary" : "bg-secondary text-secondary-foreground"
+                  }`}
+                >
+                  {appointment.status}
+                </span>
+              </div>
+            </div>
+          ))}
+
+          {appointments.length === 0 && (
+            <div className="card-elevated p-8 text-center text-muted-foreground">
+              No patient bookings yet. Once a patient books you, the session will show here.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (!isUser) {
+    return null;
+  }
+
   return (
     <div className="animate-fade-in flex flex-col gap-8">
       <header>
@@ -144,7 +221,6 @@ export default function Appointments() {
                     type="button"
                     onClick={() => {
                       setSelectedCHW(chw);
-                      setNotificationPhone(chw.phone || "");
                     }}
                     className={`rounded-2xl border p-4 text-left transition-all ${
                       isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
@@ -192,6 +268,18 @@ export default function Appointments() {
                 placeholder="+2547..."
                 className="rounded-2xl h-12"
               />
+              <p className="text-xs text-muted-foreground">
+                We will use Africa&apos;s Talking to send your booking SMS here.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border/70 bg-background/60 px-4 py-4 text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">Appointment contact SMS</span>
+            <div className="mt-2">
+              {selectedCHW?.phone
+                ? `${selectedCHW.name} will also receive an appointment SMS on ${selectedCHW.phone}.`
+                : "Choose a CHW with a phone number on file to send the second booking SMS."}
             </div>
           </div>
           <div className="space-y-2">
@@ -347,4 +435,8 @@ function formatDateTime(value: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function didSendSMS(status?: string) {
+  return status === "sent";
 }

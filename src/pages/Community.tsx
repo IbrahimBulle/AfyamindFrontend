@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { DEFAULT_API_BASE, api, type CommunityMessage } from "@/lib/api";
+import { api, type CommunityMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -16,32 +16,22 @@ export default function Community() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    api.getCommunityMessages(room).then(setMessages).catch(console.error);
-  }, [room]);
+    let active = true;
 
-  useEffect(() => {
-    const explicitBase = import.meta.env.VITE_WS_BASE || import.meta.env.VITE_API_BASE || DEFAULT_API_BASE;
-    const base = new URL(explicitBase, window.location.origin);
-    const protocol = base.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = new URL(`${protocol}//${base.host}/ws/community`);
-    wsUrl.searchParams.set("room", room);
-
-    const socket = new WebSocket(wsUrl.toString());
-    socket.onmessage = (event) => {
-      try {
-        const parsed = JSON.parse(event.data) as { type?: string; payload?: CommunityMessage };
-        if (parsed.type !== "community_message" || !parsed.payload) return;
-        setMessages((current) => {
-          if (current.some((item) => item.id === parsed.payload?.id)) return current;
-          return [...current, parsed.payload];
-        });
-      } catch (error) {
-        console.error("Unable to parse community socket event", error);
-      }
+    const load = () => {
+      api.getCommunityMessages(room)
+        .then((items) => {
+          if (active) setMessages(items);
+        })
+        .catch(console.error);
     };
 
+    load();
+    const intervalId = window.setInterval(load, 5000);
+
     return () => {
-      socket.close();
+      active = false;
+      window.clearInterval(intervalId);
     };
   }, [room]);
 
@@ -58,6 +48,8 @@ export default function Community() {
     setLoading(true);
     try {
       await api.createCommunityMessage({ room, message: newMessage });
+      const updated = await api.getCommunityMessages(room);
+      setMessages(updated);
       setNewMessage("");
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });

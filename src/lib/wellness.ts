@@ -404,7 +404,7 @@ export function sessionTasks(plan: CarePlan | null) {
       key: "chwChatComplete",
       title: "Talk to a CHW or support contact",
       description: "Use CHW Support and the linked appointment flow for follow-up care.",
-      href: "/directory",
+      href: "/care-chat",
     });
   }
 
@@ -424,8 +424,7 @@ export function sessionTasks(plan: CarePlan | null) {
 export function isSessionComplete(plan: CarePlan | null, progress: SessionProgress) {
   const tasks = sessionTasks(plan);
   if (tasks.length === 0) return false;
-  const checklistDone = tasks.every((task) => progress[task.key as keyof SessionProgress] === true);
-  return checklistDone && progress.reflection.trim().length >= 12;
+  return tasks.every((task) => progress[task.key as keyof SessionProgress] === true);
 }
 
 export function totalAdmissionQuestions() {
